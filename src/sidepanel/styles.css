@@ -31,3 +31,35 @@ ul { margin: 0; padding-left: 20px; color: #354157; line-height: 1.7; }
   padding: 12px 16px;
 }
 .primary-button:hover { background: #1d4ed8; }
+.section-heading { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; }
+.section-heading h2 { margin-bottom: 6px; }
+.template-form { display: flex; flex-direction: column; gap: 14px; }
+.template-form label, .filters { color: #354157; font-size: 0.88rem; font-weight: 800; }
+input, textarea, select {
+  width: 100%;
+  border: 1px solid #cfd8e6;
+  border-radius: 12px;
+  color: #172033;
+  font: inherit;
+  margin-top: 6px;
+  padding: 10px 12px;
+}
+textarea { resize: vertical; }
+.form-row { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.filters { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(130px, 0.6fr); margin-bottom: 14px; }
+.template-list { display: flex; flex-direction: column; gap: 12px; }
+.template-card { border: 1px solid #dfe6f1; border-radius: 16px; padding: 14px; }
+.template-card h3 { margin: 0 0 8px; }
+.metadata-grid { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 14px 0; }
+dt { color: #6b7280; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+dd { color: #172033; font-weight: 800; margin: 3px 0 0; }
+.card-actions { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.card-actions button, .text-button { border: 1px solid #cfd8e6; border-radius: 999px; background: #fff; color: #1d4ed8; cursor: pointer; font-weight: 800; padding: 9px 12px; }
+.card-actions button:hover, .text-button:hover { background: #eef4ff; }
+.danger-button { color: #b91c1c !important; }
+.empty-state { border: 1px dashed #cfd8e6; border-radius: 16px; margin: 0; padding: 18px; text-align: center; }
+.canvas-placeholder { margin-top: 12px; }
+@media (max-width: 520px) {
+  .form-row, .filters, .metadata-grid, .card-actions { grid-template-columns: 1fr; }
+  .section-heading { flex-direction: column; }
+}
