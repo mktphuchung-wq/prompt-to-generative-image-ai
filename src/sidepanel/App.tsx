@@ -1,47 +1,243 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { EXTENSION_NAME } from '../shared/constants';
-import { getAppState } from '../shared/storage';
-import type { AppState } from '../shared/types';
+import {
+  createTemplate,
+  deleteTemplate,
+  duplicateTemplate,
+  getAppState,
+  updateTemplate
+} from '../shared/storage';
+import type {
+  AppState,
+  PromptTemplate,
+  PromptTemplateTargetTool,
+  PromptTemplateUseCase
+} from '../shared/types';
+
+const USE_CASES: { value: PromptTemplateUseCase; label: string }[] = [
+  { value: 'mockup_with_person', label: 'Mockup with person' },
+  { value: 'mockup_without_person', label: 'Mockup without person' },
+  { value: 'lifestyle_image', label: 'Lifestyle image' },
+  { value: 'clean_ecommerce', label: 'Clean ecommerce' },
+  { value: 'event_campaign', label: 'Event campaign' },
+  { value: 'social_visual', label: 'Social visual' },
+  { value: 'ad_creative', label: 'Ad creative' },
+  { value: 'image_variation', label: 'Image variation' },
+  { value: 'image_edit', label: 'Image edit' },
+  { value: 'video_prompt', label: 'Video prompt' },
+  { value: 'critique_prompt', label: 'Critique prompt' }
+];
+
+const TARGET_TOOLS: { value: PromptTemplateTargetTool; label: string }[] = [
+  { value: 'chatgpt', label: 'ChatGPT' },
+  { value: 'gemini', label: 'Gemini' },
+  { value: 'google_flow', label: 'Google Flow' },
+  { value: 'manual', label: 'Manual' }
+];
+
+const emptyForm = {
+  name: '',
+  description: '',
+  useCase: 'mockup_with_person' as PromptTemplateUseCase,
+  targetTool: 'chatgpt' as PromptTemplateTargetTool
+};
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(value));
+}
 
 export default function App() {
   const [state, setState] = useState<AppState | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [useCaseFilter, setUseCaseFilter] = useState<'all' | PromptTemplateUseCase>('all');
+  const [canvasTemplate, setCanvasTemplate] = useState<PromptTemplate | null>(null);
+
+  const refreshState = () => getAppState().then(setState);
 
   useEffect(() => {
-    getAppState().then(setState).catch(() => setState({ templates: [], artifacts: [] }));
+    refreshState().catch(() =>
+      setState({ projects: [], activeProjectId: '', templates: [], artifacts: [] })
+    );
   }, []);
+
+  const activeProject = state?.projects.find((project) => project.id === state.activeProjectId);
+  const activeTemplates = useMemo(() => {
+    const templates = state?.templates.filter((template) => template.projectId === state.activeProjectId) ?? [];
+    const query = search.trim().toLowerCase();
+
+    return templates.filter((template) => {
+      const matchesSearch = !query || template.name.toLowerCase().includes(query);
+      const matchesUseCase = useCaseFilter === 'all' || template.useCase === useCaseFilter;
+      return matchesSearch && matchesUseCase;
+    });
+  }, [search, state, useCaseFilter]);
+
+  const submitTemplate = async (event: { preventDefault: () => void }) => {
+    event.preventDefault();
+    if (!state?.activeProjectId || !form.name.trim()) return;
+
+    if (editingId) {
+      await updateTemplate(editingId, form);
+    } else {
+      await createTemplate(state.activeProjectId, form);
+    }
+
+    setForm(emptyForm);
+    setEditingId(null);
+    await refreshState();
+  };
+
+  const startEditing = (template: PromptTemplate) => {
+    setEditingId(template.id);
+    setForm({
+      name: template.name,
+      description: template.description ?? '',
+      useCase: template.useCase,
+      targetTool: template.targetTool
+    });
+  };
+
+  const duplicate = async (id: string) => {
+    await duplicateTemplate(id);
+    await refreshState();
+  };
+
+  const remove = async (id: string) => {
+    await deleteTemplate(id);
+    if (editingId === id) {
+      setEditingId(null);
+      setForm(emptyForm);
+    }
+    await refreshState();
+  };
+
+  if (canvasTemplate) {
+    return (
+      <main className="app-shell">
+        <button className="text-button" type="button" onClick={() => setCanvasTemplate(null)}>
+          ← Back to Template Library
+        </button>
+        <section className="hero canvas-placeholder">
+          <p className="eyebrow">Canvas placeholder</p>
+          <h1>{canvasTemplate.name}</h1>
+          <p>
+            The node canvas for this reusable prompt workflow will be implemented in a later milestone.
+            This placeholder confirms the selected Project template can be opened from the library.
+          </p>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="app-shell">
       <header className="hero">
-        <p className="eyebrow">Chrome Side Panel MVP</p>
+        <p className="eyebrow">Template Library</p>
         <h1>{EXTENSION_NAME}</h1>
         <p>
-          Build reusable prompt workflows, prepare final prompts, track generated outputs, and review
-          artifacts from one browser-native workspace.
+          Manage reusable prompt workflows for <strong>{activeProject?.name ?? 'the active Project'}</strong>.
+          Templates shown here are scoped to the active Project only.
         </p>
       </header>
 
       <section className="status-grid" aria-label="Workflow status">
         <article>
-          <span className="metric">{state?.templates.length ?? '—'}</span>
-          <strong>Prompt templates</strong>
-          <p>Node canvas is intentionally deferred for a later milestone.</p>
+          <span className="metric">{activeTemplates.length}</span>
+          <strong>Visible templates</strong>
+          <p>Filtered by search, use case, and active Project.</p>
         </article>
         <article>
-          <span className="metric">{state?.artifacts.length ?? '—'}</span>
-          <strong>Artifacts</strong>
-          <p>Output approval tracking is scaffolded, not automated yet.</p>
+          <span className="metric">{state?.templates.length ?? '—'}</span>
+          <strong>Total stored</strong>
+          <p>All Projects remain in local extension storage.</p>
         </article>
       </section>
 
       <section className="panel-card">
-        <h2>MVP foundation</h2>
-        <ul>
-          <li>Manifest V3 extension shell</li>
-          <li>Side Panel React application</li>
-          <li>Popup entry point for status and quick access</li>
-          <li>Background service worker, content script, storage, and messaging helpers</li>
-        </ul>
+        <div className="section-heading">
+          <div>
+            <h2>{editingId ? 'Edit Template' : 'Create Template'}</h2>
+            <p>Name the workflow, choose its use case, and pick the intended target tool.</p>
+          </div>
+          {editingId && (
+            <button className="text-button" type="button" onClick={() => { setEditingId(null); setForm(emptyForm); }}>
+              Cancel edit
+            </button>
+          )}
+        </div>
+        <form className="template-form" onSubmit={submitTemplate}>
+          <label>
+            Name
+            <input value={form.name} onChange={(event: { target: HTMLInputElement }) => setForm({ ...form, name: event.target.value })} required />
+          </label>
+          <label>
+            Description
+            <textarea value={form.description} onChange={(event: { target: HTMLTextAreaElement }) => setForm({ ...form, description: event.target.value })} rows={3} />
+          </label>
+          <div className="form-row">
+            <label>
+              Use case
+              <select value={form.useCase} onChange={(event: { target: HTMLSelectElement }) => setForm({ ...form, useCase: event.target.value as PromptTemplateUseCase })}>
+                {USE_CASES.map((useCase) => <option key={useCase.value} value={useCase.value}>{useCase.label}</option>)}
+              </select>
+            </label>
+            <label>
+              Target tool
+              <select value={form.targetTool} onChange={(event: { target: HTMLSelectElement }) => setForm({ ...form, targetTool: event.target.value as PromptTemplateTargetTool })}>
+                {TARGET_TOOLS.map((tool) => <option key={tool.value} value={tool.value}>{tool.label}</option>)}
+              </select>
+            </label>
+          </div>
+          <button className="primary-button" type="submit">{editingId ? 'Save Template' : 'Create Template'}</button>
+        </form>
+      </section>
+
+      <section className="panel-card">
+        <div className="section-heading">
+          <div>
+            <h2>Templates</h2>
+            <p>Search and filter the active Project library.</p>
+          </div>
+        </div>
+        <div className="filters">
+          <input aria-label="Search templates by name" placeholder="Search by name" value={search} onChange={(event: { target: HTMLInputElement }) => setSearch(event.target.value)} />
+          <select aria-label="Filter by use case" value={useCaseFilter} onChange={(event: { target: HTMLSelectElement }) => setUseCaseFilter(event.target.value as 'all' | PromptTemplateUseCase)}>
+            <option value="all">All use cases</option>
+            {USE_CASES.map((useCase) => <option key={useCase.value} value={useCase.value}>{useCase.label}</option>)}
+          </select>
+        </div>
+
+        <div className="template-list">
+          {activeTemplates.length === 0 && <p className="empty-state">No templates match this Project, search, and filter.</p>}
+          {activeTemplates.map((template: PromptTemplate) => {
+            const useCase = USE_CASES.find((item) => item.value === template.useCase)?.label ?? template.useCase;
+            const targetTool = TARGET_TOOLS.find((item) => item.value === template.targetTool)?.label ?? template.targetTool;
+            const nodeCount = template.graph?.nodes.length;
+
+            return (
+              <article className="template-card" key={template.id}>
+                <div>
+                  <h3>{template.name}</h3>
+                  {template.description && <p>{template.description}</p>}
+                </div>
+                <dl className="metadata-grid">
+                  <div><dt>Use case</dt><dd>{useCase}</dd></div>
+                  <div><dt>Target tool</dt><dd>{targetTool}</dd></div>
+                  <div><dt>Nodes</dt><dd>{nodeCount === undefined ? 'No graph yet' : nodeCount}</dd></div>
+                  <div><dt>Last updated</dt><dd>{formatDate(template.updatedAt)}</dd></div>
+                </dl>
+                <div className="card-actions">
+                  <button type="button" onClick={() => setCanvasTemplate(template)}>Open in Canvas</button>
+                  <button type="button" onClick={() => startEditing(template)}>Edit</button>
+                  <button type="button" onClick={() => duplicate(template.id)}>Duplicate</button>
+                  <button className="danger-button" type="button" onClick={() => remove(template.id)}>Delete</button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
       </section>
     </main>
   );
