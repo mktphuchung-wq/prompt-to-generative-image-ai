@@ -17,22 +17,66 @@ export type PromptTemplateUseCase =
 
 export type PromptTemplateTargetTool = 'chatgpt' | 'gemini' | 'google_flow' | 'manual';
 
+export type PromptGraphNodeType = 'text' | 'variant' | 'artifact_input' | 'tool_action' | 'output';
+
+export type PromptNodeDataType =
+  | 'product'
+  | 'product_accuracy'
+  | 'model'
+  | 'pose'
+  | 'background'
+  | 'event_context'
+  | 'scene_style'
+  | 'camera_angle'
+  | 'lighting'
+  | 'composition'
+  | 'brand_constraints'
+  | 'negative_constraints'
+  | 'output_format'
+  | 'edit_instruction'
+  | 'motion_instruction'
+  | 'critique_instruction'
+  | 'custom';
+
+export type PromptSelectionMode = 'single' | 'multiple' | 'manual';
+
+export type PromptVariant = {
+  id: string;
+  label: string;
+  content: string;
+  isSelected: boolean;
+  order: number;
+};
+
+export type PromptNodeData = {
+  name: string;
+  nodeType: PromptNodeDataType;
+  isEnabled: boolean;
+  isRequired?: boolean;
+  selectionMode: PromptSelectionMode;
+  variants: PromptVariant[];
+};
+
 export interface PromptGraphNode {
   id: string;
-  type?: string;
-  label?: string;
-  data?: Record<string, unknown>;
+  type: PromptGraphNodeType;
+  position: { x: number; y: number };
+  data: PromptNodeData;
 }
 
 export interface PromptGraphEdge {
   id: string;
   source: string;
   target: string;
+  sourceHandle?: string;
+  targetHandle?: string;
 }
 
 export interface PromptGraph {
+  id: string;
+  templateId: string;
   nodes: PromptGraphNode[];
-  edges?: PromptGraphEdge[];
+  edges: PromptGraphEdge[];
 }
 
 export interface Project {
