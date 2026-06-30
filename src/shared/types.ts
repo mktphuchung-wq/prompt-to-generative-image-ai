@@ -1,4 +1,5 @@
 export type SupportedToolId = 'chatgpt' | 'gemini' | 'google_flow';
+export type SourceTool = SupportedToolId | 'manual';
 
 export type SupportedTool = {
   id: SupportedToolId;
@@ -23,7 +24,7 @@ export type PromptTemplateUseCase =
   | 'video_prompt'
   | 'critique_prompt';
 
-export type PromptTemplateTargetTool = SupportedToolId | 'manual';
+export type PromptTemplateTargetTool = SourceTool;
 export type PromptRunTargetTool = PromptTemplateTargetTool;
 
 export type PromptRunStatus =
@@ -157,14 +158,51 @@ export interface QueueItem {
   updatedAt: string;
 }
 
-export interface GeneratedArtifact {
+export type OutputFileType = 'image' | 'video' | 'file';
+export type OutputStatus = 'needs_review' | 'needs_edit' | 'approved' | 'rejected';
+export type ArtifactType =
+  | 'product_mockup'
+  | 'lifestyle_image'
+  | 'clean_product_image'
+  | 'campaign_banner'
+  | 'social_image'
+  | 'reference_image'
+  | 'video_source'
+  | 'prompt_reference'
+  | 'other';
+
+export type Output = {
   id: string;
-  promptId: string;
-  tool: SupportedTool;
-  status: ArtifactStatus;
-  previewUrl?: string;
+  projectId: string;
+  promptRunId?: string;
+  parentOutputId?: string;
+  fileName: string;
+  fileType: OutputFileType;
+  dataUrl?: string;
+  sourceTool: SourceTool;
+  status: OutputStatus;
+  originalPrompt?: string;
+  editPrompt?: string;
   createdAt: string;
-}
+  updatedAt: string;
+};
+
+export type Artifact = {
+  id: string;
+  projectId: string;
+  sourceOutputId: string;
+  name: string;
+  type: ArtifactType;
+  tags: string[];
+  fileName: string;
+  fileType: OutputFileType;
+  dataUrl?: string;
+  sourceTool: SourceTool;
+  originalPrompt?: string;
+  selectedVariantIds?: string[];
+  createdAt: string;
+  updatedAt: string;
+};
 
 export interface AppState {
   projects: Project[];
@@ -172,7 +210,8 @@ export interface AppState {
   templates: PromptTemplate[];
   promptRuns: PromptRun[];
   queueItems: QueueItem[];
-  artifacts: GeneratedArtifact[];
+  outputs: Output[];
+  artifacts: Artifact[];
   activeTool?: SupportedTool;
 }
 

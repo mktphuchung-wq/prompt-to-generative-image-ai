@@ -3,18 +3,24 @@ import { EXTENSION_NAME } from '../shared/constants';
 import { sendPromptToTool } from '../shared/toolTabController';
 import {
   addPromptRunToQueue,
+  approveOutputAsArtifact,
   clearCompletedQueueItems,
+  createOutput,
   createPromptRun,
   createTemplate,
   deleteTemplate,
   duplicateTemplate,
   getAppState,
   updateQueueItem,
+  updateArtifact,
+  updateOutput,
   updatePromptRun,
   updateTemplate
 } from '../shared/storage';
 import type {
   AppState,
+  ArtifactType,
+  OutputStatus,
   PromptGraph,
   PromptRun,
   PromptTemplate,
@@ -40,11 +46,32 @@ const USE_CASES: { value: PromptTemplateUseCase; label: string }[] = [
   { value: 'critique_prompt', label: 'Critique prompt' }
 ];
 
+const ARTIFACT_TYPES: { value: ArtifactType; label: string }[] = [
+  { value: 'product_mockup', label: 'Product mockup' },
+  { value: 'lifestyle_image', label: 'Lifestyle image' },
+  { value: 'clean_product_image', label: 'Clean product image' },
+  { value: 'campaign_banner', label: 'Campaign banner' },
+  { value: 'social_image', label: 'Social image' },
+  { value: 'reference_image', label: 'Reference image' },
+  { value: 'video_source', label: 'Video source' },
+  { value: 'prompt_reference', label: 'Prompt reference' },
+  { value: 'other', label: 'Other' }
+];
+
 const TARGET_TOOLS: { value: PromptTemplateTargetTool; label: string }[] = [
   { value: 'chatgpt', label: 'ChatGPT' },
   { value: 'gemini', label: 'Gemini' },
   { value: 'google_flow', label: 'Google Flow' },
   { value: 'manual', label: 'Manual' }
+];
+
+const MAX_OUTPUT_FILE_SIZE = 1.5 * 1024 * 1024;
+const REVIEW_CHECKLIST = [
+  'Product visible',
+  'Product design accurate',
+  'Scene matches prompt',
+  'Image quality usable',
+  'No obvious visual defects'
 ];
 
 const emptyForm = {
@@ -65,19 +92,27 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [useCaseFilter, setUseCaseFilter] = useState<'all' | PromptTemplateUseCase>('all');
   const [canvasTemplate, setCanvasTemplate] = useState<PromptTemplate | null>(null);
-  const [screen, setScreen] = useState<'templates' | 'queue'>('templates');
+  const [screen, setScreen] = useState<'templates' | 'queue' | 'outputs' | 'artifacts'>('templates');
   const [queueMessage, setQueueMessage] = useState('');
+  const [outputPromptRunId, setOutputPromptRunId] = useState('');
+  const [outputSourceTool, setOutputSourceTool] = useState<PromptTemplateTargetTool>('manual');
+  const [outputOriginalPrompt, setOutputOriginalPrompt] = useState('');
+  const [outputMessage, setOutputMessage] = useState('');
+  const [artifactSearch, setArtifactSearch] = useState('');
+  const [artifactTypeFilter, setArtifactTypeFilter] = useState<'all' | ArtifactType>('all');
 
   const refreshState = () => getAppState().then(setState);
 
   useEffect(() => {
     refreshState().catch(() =>
-      setState({ projects: [], activeProjectId: '', templates: [], promptRuns: [], queueItems: [], artifacts: [] })
+      setState({ projects: [], activeProjectId: '', templates: [], promptRuns: [], queueItems: [], outputs: [], artifacts: [] })
     );
   }, []);
 
   const activeProject = state?.projects.find((project) => project.id === state.activeProjectId);
   const activePromptRuns = state?.promptRuns.filter((run) => run.projectId === state.activeProjectId) ?? [];
+  const activeOutputs = state?.outputs.filter((output) => output.projectId === state.activeProjectId) ?? [];
+  const activeArtifacts = state?.artifacts.filter((artifact) => artifact.projectId === state.activeProjectId) ?? [];
   const activeQueueItems = useMemo(() => {
     return (state?.queueItems.filter((item) => item.projectId === state.activeProjectId) ?? [])
       .sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt));
@@ -217,6 +252,92 @@ export default function App() {
     await refreshState();
   };
 
+  const fileToDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error('Unable to read file'));
+    reader.readAsDataURL(file);
+  });
+
+  const uploadOutput = async (event: { target: HTMLInputElement }) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !state?.activeProjectId) return;
+    if (!file.type.startsWith('image/')) {
+      setOutputMessage('Please upload an image file for the MVP output preview.');
+      return;
+    }
+    if (file.size > MAX_OUTPUT_FILE_SIZE) {
+      setOutputMessage(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Use an image under 1.5 MB for chrome.storage.local MVP storage.`);
+      return;
+    }
+
+    const dataUrl = await fileToDataUrl(file);
+    const promptRun = activePromptRuns.find((run) => run.id === outputPromptRunId);
+    await createOutput({
+      projectId: state.activeProjectId,
+      promptRunId: outputPromptRunId || undefined,
+      fileName: file.name,
+      fileType: 'image',
+      dataUrl,
+      sourceTool: outputSourceTool,
+      originalPrompt: outputOriginalPrompt || promptRun?.finalPrompt
+    });
+    setOutputMessage('Output uploaded and marked needs review.');
+    setOutputOriginalPrompt('');
+    await refreshState();
+  };
+
+  const setOutputStatus = async (id: string, status: OutputStatus) => {
+    await updateOutput(id, { status });
+    await refreshState();
+  };
+
+  const approveOutput = async (id: string) => {
+    await approveOutputAsArtifact({ outputId: id });
+    setOutputMessage('Output approved and added to the Artifact Library.');
+    await refreshState();
+  };
+
+  const saveArtifactName = async (id: string, name: string) => {
+    await updateArtifact(id, { name });
+    await refreshState();
+  };
+
+  const saveArtifactTags = async (id: string, value: string) => {
+    const tags = value.split(',').map((tag) => tag.trim()).filter(Boolean);
+    await updateArtifact(id, { tags });
+    await refreshState();
+  };
+
+  const filteredArtifacts = activeArtifacts.filter((artifact) => {
+    const query = artifactSearch.trim().toLowerCase();
+    const matchesType = artifactTypeFilter === 'all' || artifact.type === artifactTypeFilter;
+    const matchesSearch = !query || [artifact.name, artifact.fileName, artifact.type, ...artifact.tags]
+      .some((value) => value.toLowerCase().includes(query));
+    return matchesType && matchesSearch;
+  });
+
+  const renderOutputs = () => (
+    <main className="app-shell">
+      <header className="hero"><p className="eyebrow">Outputs</p><h1>Review generated images before they become artifacts</h1><p>Uploaded outputs are separate review records for <strong>{activeProject?.name ?? 'the active Project'}</strong>. Approving one creates a new Artifact Library item.</p><div className="hero-actions"><button className="text-button" type="button" onClick={() => setScreen('templates')}>← Template Library</button><button className="primary-button compact" type="button" onClick={() => setScreen('artifacts')}>Open Artifact Library</button></div></header>
+      <section className="panel-card"><div className="section-heading"><div><h2>Attach output image</h2><p>Small images are stored as dataUrls in chrome.storage.local for MVP. TODO: use IndexedDB for larger files.</p></div></div>
+        <div className="form-row"><label>Link PromptRun<select value={outputPromptRunId} onChange={(event: { target: HTMLSelectElement }) => setOutputPromptRunId(event.target.value)}><option value="">No prompt run</option>{activePromptRuns.map((run) => <option key={run.id} value={run.id}>{formatDate(run.createdAt)} · {run.targetTool}</option>)}</select></label><label>Source tool<select value={outputSourceTool} onChange={(event: { target: HTMLSelectElement }) => setOutputSourceTool(event.target.value as PromptTemplateTargetTool)}>{TARGET_TOOLS.map((tool) => <option key={tool.value} value={tool.value}>{tool.label}</option>)}</select></label></div>
+        <label className="field-block">Original prompt<textarea value={outputOriginalPrompt} rows={3} onChange={(event: { target: HTMLTextAreaElement }) => setOutputOriginalPrompt(event.target.value)} placeholder="Optional; auto-filled from PromptRun when linked." /></label>
+        <input aria-label="Upload output image" type="file" accept="image/*" onChange={uploadOutput} />{outputMessage && <p className="copy-status">{outputMessage}</p>}
+      </section>
+      <section className="panel-card"><h2>Output review queue</h2><div className="artifact-list">{activeOutputs.length === 0 && <p className="empty-state">No outputs uploaded yet.</p>}{activeOutputs.map((output) => (<article className="asset-card" key={output.id}><div>{output.dataUrl && <img className="asset-preview" src={output.dataUrl} alt={output.fileName} />}<h3>{output.fileName}</h3><span className={`status-pill status-${output.status}`}>{output.status.replace('_', ' ')}</span></div><dl className="metadata-grid"><div><dt>Source</dt><dd>{output.sourceTool.replace('_', ' ')}</dd></div><div><dt>Updated</dt><dd>{formatDate(output.updatedAt)}</dd></div></dl><div className="checklist">{REVIEW_CHECKLIST.map((item) => <label className="check-row" key={item}><input type="checkbox" />{item}</label>)}</div><div className="queue-actions"><button type="button" onClick={() => approveOutput(output.id)}>Approve as Artifact</button><button type="button" onClick={() => setOutputStatus(output.id, 'needs_edit')}>Mark Needs Edit</button><button type="button" onClick={() => setOutputStatus(output.id, 'rejected')}>Reject</button></div></article>))}</div></section>
+    </main>
+  );
+
+  const renderArtifacts = () => (
+    <main className="app-shell">
+      <header className="hero"><p className="eyebrow">Artifact Library</p><h1>Approved source assets</h1><p>Artifacts are approved outputs scoped to <strong>{activeProject?.name ?? 'the active Project'}</strong>.</p><div className="hero-actions"><button className="text-button" type="button" onClick={() => setScreen('templates')}>← Template Library</button><button className="primary-button compact" type="button" onClick={() => setScreen('outputs')}>Review Outputs</button></div></header>
+      <section className="panel-card"><div className="filters"><input aria-label="Search artifacts" placeholder="Search name, file, type, or tag" value={artifactSearch} onChange={(event: { target: HTMLInputElement }) => setArtifactSearch(event.target.value)} /><select value={artifactTypeFilter} onChange={(event: { target: HTMLSelectElement }) => setArtifactTypeFilter(event.target.value as 'all' | ArtifactType)}><option value="all">All artifact types</option>{ARTIFACT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></div><div className="artifact-list">{filteredArtifacts.length === 0 && <p className="empty-state">No artifacts match this search/filter.</p>}{filteredArtifacts.map((artifact) => (<article className="asset-card" key={artifact.id}>{artifact.dataUrl && <img className="asset-preview" src={artifact.dataUrl} alt={artifact.name} />}<label>Name<input defaultValue={artifact.name} onBlur={(event: { target: HTMLInputElement }) => saveArtifactName(artifact.id, event.target.value)} /></label><label>Tags<input defaultValue={artifact.tags.join(', ')} onBlur={(event: { target: HTMLInputElement }) => saveArtifactTags(artifact.id, event.target.value)} placeholder="tag, tag" /></label><dl className="metadata-grid"><div><dt>Type</dt><dd>{artifact.type.split('_').join(' ')}</dd></div><div><dt>Source</dt><dd>{artifact.sourceTool.replace('_', ' ')}</dd></div></dl><div className="queue-actions"><button type="button">Use as Source Image</button><button type="button">Create Variation</button><button type="button">Send to Google Flow</button></div></article>))}</div></section>
+    </main>
+  );
+
+
   const renderQueue = () => (
     <main className="app-shell">
       <header className="hero">
@@ -263,6 +384,8 @@ export default function App() {
   );
 
   if (screen === 'queue') return renderQueue();
+  if (screen === 'outputs') return renderOutputs();
+  if (screen === 'artifacts') return renderArtifacts();
 
   return (
     <main className="app-shell">
@@ -275,6 +398,8 @@ export default function App() {
         </p>
         <div className="hero-actions">
           <button className="primary-button compact" type="button" onClick={() => setScreen('queue')}>Open Run Queue</button>
+          <button className="primary-button compact" type="button" onClick={() => setScreen('outputs')}>Open Outputs</button>
+          <button className="primary-button compact" type="button" onClick={() => setScreen('artifacts')}>Open Artifact Library</button>
         </div>
       </header>
 
@@ -290,8 +415,8 @@ export default function App() {
           <p>All Projects remain in local extension storage.</p>
         </article>
         <article>
-          <span className="metric">{activeQueueItems.length}</span>
-          <strong>Queue items</strong>
+          <span className="metric">{activeOutputs.length}/{activeArtifacts.length}</span>
+          <strong>Outputs / artifacts</strong>
           <p>Pending and completed prompt runs for this Project.</p>
         </article>
       </section>

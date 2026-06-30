@@ -1,6 +1,10 @@
 import { STORAGE_KEYS } from './constants';
 import type {
   AppState,
+  Artifact,
+  ArtifactType,
+  Output,
+  OutputStatus,
   PromptRun,
   PromptRunStatus,
   PromptTemplate,
@@ -27,6 +31,7 @@ export const DEFAULT_APP_STATE: AppState = {
   templates: [],
   promptRuns: [],
   queueItems: [],
+  outputs: [],
   artifacts: []
 };
 
@@ -44,6 +49,7 @@ function normalizeState(state?: LegacyAppState): AppState {
     templates: state?.templates ?? [],
     promptRuns: state?.promptRuns ?? [],
     queueItems: state?.queueItems ?? [],
+    outputs: state?.outputs ?? [],
     artifacts: state?.artifacts ?? [],
     activeTool: state?.activeTool
   };
@@ -266,4 +272,122 @@ export async function clearCompletedQueueItems(projectId: string): Promise<void>
     ...state,
     queueItems: state.queueItems.filter((item) => item.projectId !== projectId || !['done', 'skipped'].includes(item.status))
   });
+}
+
+
+export type CreateOutputInput = {
+  projectId: string;
+  promptRunId?: string;
+  parentOutputId?: string;
+  fileName: string;
+  fileType: Output['fileType'];
+  dataUrl?: string;
+  sourceTool: Output['sourceTool'];
+  originalPrompt?: string;
+  editPrompt?: string;
+};
+
+export type CreateArtifactInput = {
+  outputId: string;
+  name?: string;
+  type?: ArtifactType;
+  tags?: string[];
+};
+
+export async function createOutput(data: CreateOutputInput): Promise<Output> {
+  const state = await getAppState();
+  const timestamp = now();
+  // TODO: Move larger binary payloads to IndexedDB; chrome.storage.local dataUrl storage is MVP-only for small images.
+  const output: Output = {
+    id: createId('output'),
+    projectId: data.projectId,
+    promptRunId: data.promptRunId || undefined,
+    parentOutputId: data.parentOutputId,
+    fileName: data.fileName,
+    fileType: data.fileType,
+    dataUrl: data.dataUrl,
+    sourceTool: data.sourceTool,
+    status: 'needs_review',
+    originalPrompt: data.originalPrompt?.trim() || undefined,
+    editPrompt: data.editPrompt?.trim() || undefined,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+
+  await setAppState({ ...state, outputs: [output, ...state.outputs] });
+  return output;
+}
+
+export async function updateOutput(id: string, patch: Partial<Omit<Output, 'id' | 'createdAt'>>): Promise<Output> {
+  const state = await getAppState();
+  let updatedOutput: Output | undefined;
+  const timestamp = now();
+  const outputs = state.outputs.map((output) => {
+    if (output.id !== id) return output;
+    updatedOutput = { ...output, ...patch, updatedAt: timestamp };
+    return updatedOutput;
+  });
+
+  if (!updatedOutput) throw new Error('Output not found');
+  await setAppState({ ...state, outputs });
+  return updatedOutput;
+}
+
+export async function approveOutputAsArtifact(data: CreateArtifactInput): Promise<Artifact> {
+  const state = await getAppState();
+  const output = state.outputs.find((item) => item.id === data.outputId);
+  if (!output) throw new Error('Output not found');
+
+  const timestamp = now();
+  const promptRun = output.promptRunId ? state.promptRuns.find((run) => run.id === output.promptRunId) : undefined;
+  const existingArtifact = state.artifacts.find((artifact) => artifact.sourceOutputId === output.id);
+  const artifact: Artifact = existingArtifact ? {
+    ...existingArtifact,
+    name: data.name?.trim() || existingArtifact.name,
+    type: data.type ?? existingArtifact.type,
+    tags: data.tags ?? existingArtifact.tags,
+    updatedAt: timestamp
+  } : {
+    id: createId('artifact'),
+    projectId: output.projectId,
+    sourceOutputId: output.id,
+    name: data.name?.trim() || output.fileName.replace(/\.[^/.]+$/, '') || 'Approved artifact',
+    type: data.type ?? 'other',
+    tags: data.tags ?? [],
+    fileName: output.fileName,
+    fileType: output.fileType,
+    dataUrl: output.dataUrl,
+    sourceTool: output.sourceTool,
+    originalPrompt: output.originalPrompt ?? promptRun?.finalPrompt,
+    selectedVariantIds: promptRun?.selectedVariantIds,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+
+  const outputs = state.outputs.map((item) => item.id === output.id ? { ...item, status: 'approved' as OutputStatus, updatedAt: timestamp } : item);
+  const artifacts = existingArtifact
+    ? state.artifacts.map((item) => item.id === artifact.id ? artifact : item)
+    : [artifact, ...state.artifacts];
+  await setAppState({ ...state, outputs, artifacts });
+  return artifact;
+}
+
+export async function updateArtifact(id: string, patch: Partial<Omit<Artifact, 'id' | 'createdAt'>>): Promise<Artifact> {
+  const state = await getAppState();
+  let updatedArtifact: Artifact | undefined;
+  const artifacts = state.artifacts.map((artifact) => {
+    if (artifact.id !== id) return artifact;
+    updatedArtifact = {
+      ...artifact,
+      ...patch,
+      name: patch.name?.trim() || artifact.name,
+      tags: patch.tags ?? artifact.tags,
+      updatedAt: now()
+    };
+    return updatedArtifact;
+  });
+
+  if (!updatedArtifact) throw new Error('Artifact not found');
+  await setAppState({ ...state, artifacts });
+  return updatedArtifact;
 }
