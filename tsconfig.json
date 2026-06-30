@@ -10,6 +10,7 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ES2020",
     "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
     "rootDir": "src",
     "outDir": "dist/assets",
     "declaration": false,

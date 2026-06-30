@@ -9,10 +9,12 @@ import {
 } from '../shared/storage';
 import type {
   AppState,
+  PromptGraph,
   PromptTemplate,
   PromptTemplateTargetTool,
   PromptTemplateUseCase
 } from '../shared/types';
+import PromptCanvas from './PromptCanvas';
 
 const USE_CASES: { value: PromptTemplateUseCase; label: string }[] = [
   { value: 'mockup_with_person', label: 'Mockup with person' },
@@ -115,19 +117,16 @@ export default function App() {
 
   if (canvasTemplate) {
     return (
-      <main className="app-shell">
-        <button className="text-button" type="button" onClick={() => setCanvasTemplate(null)}>
-          ← Back to Template Library
-        </button>
-        <section className="hero canvas-placeholder">
-          <p className="eyebrow">Canvas placeholder</p>
-          <h1>{canvasTemplate.name}</h1>
-          <p>
-            The node canvas for this reusable prompt workflow will be implemented in a later milestone.
-            This placeholder confirms the selected Project template can be opened from the library.
-          </p>
-        </section>
-      </main>
+      <PromptCanvas
+        template={canvasTemplate}
+        onBack={() => setCanvasTemplate(null)}
+        onSave={async (graph: PromptGraph) => {
+          const updated = await updateTemplate(canvasTemplate.id, { graph });
+          setCanvasTemplate(updated);
+          await refreshState();
+          return updated;
+        }}
+      />
     );
   }
 
