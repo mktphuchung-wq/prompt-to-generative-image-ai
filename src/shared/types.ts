@@ -16,6 +16,31 @@ export type PromptTemplateUseCase =
   | 'critique_prompt';
 
 export type PromptTemplateTargetTool = 'chatgpt' | 'gemini' | 'google_flow' | 'manual';
+export type PromptRunTargetTool = PromptTemplateTargetTool;
+
+export type PromptRunStatus =
+  | 'draft'
+  | 'queued'
+  | 'sent'
+  | 'running'
+  | 'waiting_user'
+  | 'waiting_output'
+  | 'output_ready'
+  | 'needs_review'
+  | 'approved'
+  | 'rejected'
+  | 'failed';
+
+export type QueueItemStatus =
+  | 'pending'
+  | 'active'
+  | 'sent'
+  | 'waiting_user'
+  | 'waiting_output'
+  | 'output_ready'
+  | 'done'
+  | 'failed'
+  | 'skipped';
 
 export type PromptGraphNodeType = 'text' | 'variant' | 'artifact_input' | 'tool_action' | 'output';
 
@@ -99,6 +124,31 @@ export interface PromptTemplate {
   updatedAt: string;
 }
 
+export interface PromptRun {
+  id: string;
+  projectId: string;
+  templateId: string;
+  finalPrompt: string;
+  selectedVariantIds: string[];
+  includedNodeIds: string[];
+  targetTool: PromptRunTargetTool;
+  status: PromptRunStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QueueItem {
+  id: string;
+  projectId: string;
+  promptRunId: string;
+  targetTool: PromptRunTargetTool;
+  status: QueueItemStatus;
+  order: number;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface GeneratedArtifact {
   id: string;
   promptId: string;
@@ -112,6 +162,8 @@ export interface AppState {
   projects: Project[];
   activeProjectId: string;
   templates: PromptTemplate[];
+  promptRuns: PromptRun[];
+  queueItems: QueueItem[];
   artifacts: GeneratedArtifact[];
   activeTool?: SupportedTool;
 }

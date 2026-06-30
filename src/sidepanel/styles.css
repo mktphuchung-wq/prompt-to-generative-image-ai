@@ -15,7 +15,7 @@ button { font: inherit; }
 h1, h2, p { margin-top: 0; }
 h1 { margin-bottom: 12px; font-size: 1.7rem; line-height: 1.1; }
 p { color: #566176; line-height: 1.5; }
-.status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .status-grid article, .panel-card { padding: 18px; }
 .metric { display: block; color: #1d4ed8; font-size: 2rem; font-weight: 800; }
 ul { margin: 0; padding-left: 20px; color: #354157; line-height: 1.7; }
@@ -59,9 +59,21 @@ dd { color: #172033; font-weight: 800; margin: 3px 0 0; }
 .danger-button { color: #b91c1c !important; }
 .empty-state { border: 1px dashed #cfd8e6; border-radius: 16px; margin: 0; padding: 18px; text-align: center; }
 .canvas-placeholder { margin-top: 12px; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.queue-list { display: flex; flex-direction: column; gap: 12px; }
+.queue-card { border: 1px solid #dfe6f1; border-radius: 16px; padding: 14px; }
+.queue-card h3 { margin: 0 0 8px; }
+.queue-card-header { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; }
+.status-pill { background: #eef2ff; border-radius: 999px; color: #1d4ed8; flex: 0 0 auto; font-size: 0.76rem; font-weight: 900; padding: 6px 10px; text-transform: uppercase; }
+.status-done, .status-output_ready { background: #dcfce7; color: #166534; }
+.status-failed, .status-skipped { background: #fee2e2; color: #991b1b; }
+.status-active, .status-sent, .status-waiting_output, .status-waiting_user { background: #fef3c7; color: #92400e; }
+.queue-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.queue-actions button { border: 1px solid #cfd8e6; border-radius: 999px; background: #fff; color: #1d4ed8; cursor: pointer; font-size: 0.78rem; font-weight: 800; padding: 7px 10px; }
 @media (max-width: 520px) {
   .form-row, .filters, .metadata-grid, .card-actions { grid-template-columns: 1fr; }
   .section-heading { flex-direction: column; }
+  .queue-card-header { flex-direction: column; }
 }
 .canvas-shell { display: flex; flex-direction: column; gap: 14px; min-height: 100vh; padding: 14px; background: #eef3fb; }
 .canvas-topbar { align-items: center; background: #fff; border: 1px solid #dfe6f1; border-radius: 18px; box-shadow: 0 10px 30px rgba(23, 32, 51, 0.08); display: grid; gap: 12px; grid-template-columns: auto 1fr auto; padding: 14px; }
