@@ -14,9 +14,11 @@ export default defineConfig({
       },
       output: {
         entryFileNames: (chunkInfo: { name: string }) => {
-          if (chunkInfo.name === 'serviceWorker') return 'background/service-worker.js';
-          if (chunkInfo.name === 'content') return 'content/index.js';
-          return 'assets/[name]-[hash].js';
+          if (chunkInfo.name === 'serviceWorker') return 'assets/background/service-worker.js';
+          if (chunkInfo.name === 'content') return 'assets/content/index.js';
+          if (chunkInfo.name === 'sidepanel') return 'assets/sidepanel/index.js';
+          if (chunkInfo.name === 'popup') return 'assets/popup/index.js';
+          return 'assets/[name].js';
         },
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash][extname]'

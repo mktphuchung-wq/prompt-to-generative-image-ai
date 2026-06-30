@@ -54,7 +54,7 @@ Create a production extension bundle:
 npm run build
 ```
 
-The compiled extension is emitted to `dist/`.
+The compiled extension is emitted to `dist/`. Load the repository's `dist/` folder in Chrome as the unpacked extension; do not load the repository root or `src/`.
 
 ## Load unpacked extension
 
