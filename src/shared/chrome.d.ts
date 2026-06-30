@@ -31,7 +31,14 @@ declare namespace chrome {
     interface Tab {
       id?: number;
       windowId?: number;
+      url?: string;
+      pendingUrl?: string;
     }
+
+    function query(queryInfo: { url?: string | string[]; active?: boolean; currentWindow?: boolean }): Promise<Tab[]>;
+    function create(createProperties: { url?: string; active?: boolean }): Promise<Tab>;
+    function update(tabId: number, updateProperties: { active?: boolean; url?: string }): Promise<Tab>;
+    function sendMessage<TResponse = unknown>(tabId: number, message: unknown): Promise<TResponse>;
   }
 
   namespace windows {

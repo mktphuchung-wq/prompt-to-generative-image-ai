@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { EXTENSION_NAME } from '../shared/constants';
+import { sendPromptToTool } from '../shared/toolTabController';
 import {
   addPromptRunToQueue,
   clearCompletedQueueItems,
@@ -8,7 +9,6 @@ import {
   deleteTemplate,
   duplicateTemplate,
   getAppState,
-  runNextQueueItem,
   updateQueueItem,
   updatePromptRun,
   updateTemplate
@@ -21,7 +21,8 @@ import type {
   PromptTemplateTargetTool,
   PromptTemplateUseCase,
   QueueItem,
-  QueueItemStatus
+  QueueItemStatus,
+  SupportedToolId
 } from '../shared/types';
 import PromptCanvas from './PromptCanvas';
 
@@ -65,6 +66,7 @@ export default function App() {
   const [useCaseFilter, setUseCaseFilter] = useState<'all' | PromptTemplateUseCase>('all');
   const [canvasTemplate, setCanvasTemplate] = useState<PromptTemplate | null>(null);
   const [screen, setScreen] = useState<'templates' | 'queue'>('templates');
+  const [queueMessage, setQueueMessage] = useState('');
 
   const refreshState = () => getAppState().then(setState);
 
@@ -159,6 +161,44 @@ export default function App() {
     );
   }
 
+  const runQueueItem = async (item: QueueItem) => {
+    const promptRun = activePromptRuns.find((run) => run.id === item.promptRunId);
+    if (!promptRun) {
+      await updateQueueItem(item.id, { status: 'failed', error: 'Prompt run not found.' });
+      setQueueMessage('Prompt run not found.');
+      await refreshState();
+      return;
+    }
+
+    if (item.targetTool === 'manual') {
+      await updateQueueItem(item.id, { status: 'waiting_user', error: 'Manual target selected. Prompt copied. Paste manually if auto-paste did not work.' });
+      await updatePromptRun(item.promptRunId, { status: 'waiting_user' });
+      await navigator.clipboard.writeText(promptRun.finalPrompt);
+      setQueueMessage('Prompt copied. Paste manually if auto-paste did not work.');
+      await refreshState();
+      return;
+    }
+
+    const response = await sendPromptToTool(item.targetTool as SupportedToolId, promptRun.finalPrompt);
+    const nextStatus: QueueItemStatus = response.pasted ? 'sent' : 'waiting_user';
+    await updateQueueItem(item.id, {
+      status: nextStatus,
+      error: response.pasted ? undefined : 'Prompt copied. Paste manually if auto-paste did not work.'
+    });
+    await updatePromptRun(item.promptRunId, { status: response.pasted ? 'sent' : 'waiting_user' });
+    setQueueMessage('Prompt copied. Paste manually if auto-paste did not work.');
+    await refreshState();
+  };
+
+  const runNextQueuedPrompt = async () => {
+    const next = activeQueueItems.find((item) => item.status === 'pending') ?? activeQueueItems.find((item) => item.status === 'active');
+    if (!next) {
+      setQueueMessage('No pending queue item to run.');
+      return;
+    }
+    await runQueueItem(next);
+  };
+
   const setQueueStatus = async (item: QueueItem, status: QueueItemStatus) => {
     await updateQueueItem(item.id, { status, error: undefined });
     const promptRunStatusByQueueStatus: Partial<Record<QueueItemStatus, PromptRun['status']>> = {
@@ -185,12 +225,13 @@ export default function App() {
         <p>Queue items are scoped to <strong>{activeProject?.name ?? 'the active Project'}</strong> and persist in local extension storage.</p>
         <div className="hero-actions">
           <button className="text-button" type="button" onClick={() => setScreen('templates')}>← Template Library</button>
-          <button className="primary-button compact" type="button" onClick={async () => { await runNextQueueItem(state?.activeProjectId ?? ''); await refreshState(); }}>Run Next</button>
+          <button className="primary-button compact" type="button" onClick={runNextQueuedPrompt}>Run Next</button>
           <button className="text-button" type="button" onClick={async () => { await clearCompletedQueueItems(state?.activeProjectId ?? ''); await refreshState(); }}>Clear Completed</button>
         </div>
       </header>
       <section className="panel-card">
         <div className="section-heading"><div><h2>Queued tasks</h2><p>Use these manual controls to move each prompt through the semi-auto workflow.</p></div></div>
+        {queueMessage && <p className="copy-status">{queueMessage}</p>}
         <div className="queue-list">
           {activeQueueItems.length === 0 && <p className="empty-state">No prompt runs are queued for this Project yet.</p>}
           {activeQueueItems.map((item) => {
@@ -206,7 +247,7 @@ export default function App() {
                   <div><dt>Updated</dt><dd>{formatDate(item.updatedAt)}</dd></div>
                 </dl>
                 <div className="queue-actions">
-                  <button type="button" onClick={() => setQueueStatus(item, 'sent')}>Mark Sent</button>
+                  <button type="button" onClick={() => runQueueItem(item)} disabled={!promptRun}>Run Next</button><button type="button" onClick={() => setQueueStatus(item, 'sent')}>Mark Sent</button>
                   <button type="button" onClick={() => setQueueStatus(item, 'waiting_output')}>Mark Waiting Output</button>
                   <button type="button" onClick={() => setQueueStatus(item, 'output_ready')}>Mark Output Ready</button>
                   <button type="button" onClick={() => setQueueStatus(item, 'pending')}>Retry</button>

@@ -3,7 +3,28 @@
   "name": "AI Visual Workspace",
   "description": "Project workspace for prompt-to-generative-image workflows.",
   "version": "0.1.0",
-  "permissions": ["storage", "sidePanel"],
+  "permissions": ["storage", "tabs", "scripting", "sidePanel"],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://gemini.google.com/*",
+    "https://labs.google/*",
+    "https://flow.google/*"
+  ],
+  "background": {
+    "service_worker": "assets/background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*",
+        "https://labs.google/*",
+        "https://flow.google/*"
+      ],
+      "js": ["assets/content/index.js"]
+    }
+  ],
   "side_panel": { "default_path": "index.html" },
   "action": { "default_title": "AI Visual Workspace" }
 }

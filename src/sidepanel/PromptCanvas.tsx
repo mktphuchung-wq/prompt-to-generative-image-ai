@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { generateFinalPrompt } from '../shared/promptGraphEngine';
+import { sendPromptToTool } from '../shared/toolTabController';
 import type {
   PromptGraph,
   PromptGraphEdge,
@@ -9,7 +10,8 @@ import type {
   PromptNodeDataType,
   PromptSelectionMode,
   PromptTemplate,
-  PromptVariant
+  PromptVariant,
+  SupportedToolId
 } from '../shared/types';
 
 type PromptCanvasProps = {
@@ -167,11 +169,22 @@ export default function PromptCanvas({ template, onBack, onSave, onCreatePromptR
     setConnectingFrom(null);
   };
 
+  const targetToolId = template.targetTool === 'manual' ? null : (template.targetTool as SupportedToolId);
+
   const copyPrompt = async () => {
     if (!promptPreview) return;
     await navigator.clipboard.writeText(promptPreview);
     setCopyStatus('Copied');
     window.setTimeout(() => setCopyStatus(''), 1600);
+  };
+
+  const sendCurrentPromptToTool = async () => {
+    if (!promptPreview.trim() || !targetToolId) return;
+    const response = await sendPromptToTool(targetToolId, promptPreview);
+    setCopyStatus(response.pasted
+      ? 'Prompt sent to tool. User confirmation is still required.'
+      : 'Prompt copied. Paste manually if auto-paste did not work.');
+    window.setTimeout(() => setCopyStatus(''), 3600);
   };
 
   const savePromptRun = async (addToQueue = false) => {
@@ -223,7 +236,7 @@ export default function PromptCanvas({ template, onBack, onSave, onCreatePromptR
           {selectedNode.data.variants.map((variant) => <div className="variant-card" key={variant.id}><label>Label<input value={variant.label} onChange={(event: any) => updateVariant(variant.id, { label: event.target.value })} /></label><label>Content<textarea rows={3} value={variant.content} onChange={(event: any) => updateVariant(variant.id, { content: event.target.value })} /></label><div className="variant-actions"><label className="check-row"><input type="checkbox" checked={variant.isSelected} onChange={(event: any) => updateVariant(variant.id, { isSelected: event.target.checked })} /> Selected</label><button type="button" onClick={() => updateSelectedData({ variants: selectedNode.data.variants.filter((item) => item.id !== variant.id) })}>Delete</button></div></div>)}
         </div> : <p>Select a node to edit its prompt metadata and variants.</p>}</aside>
       </section>
-      <footer className="prompt-preview"><div><p className="eyebrow">Final Prompt Preview</p><h2>{manualEditsActive ? 'Manual edits active' : 'Live graph preview'}</h2><div className="preview-actions"><button type="button" onClick={copyPrompt} disabled={!promptPreview}>Copy Prompt</button><button type="button" onClick={() => savePromptRun(false)} disabled={!promptPreview}>Save Prompt Run</button><button type="button" onClick={() => savePromptRun(true)} disabled={!promptPreview}>Add to Queue</button>{manualEditsActive ? <button type="button" onClick={() => setManualPrompt(null)}>Reset manual edits</button> : <button type="button" onClick={() => setManualPrompt(promptResult.finalPrompt)}>Manual Edit</button>}</div>{copyStatus && <p className="copy-status">{copyStatus}</p>}{promptResult.warnings.length > 0 && <ul className="prompt-warnings">{promptResult.warnings.map((warning, index) => <li key={`${warning.code}-${warning.nodeId ?? index}`}>{warning.message}</li>)}</ul>}</div>{manualEditsActive ? <textarea className="manual-prompt-editor" rows={8} value={promptPreview} onChange={(event: any) => setManualPrompt(event.target.value)} /> : <pre>{promptPreview || 'Connect enabled nodes to build the final prompt.'}</pre>}</footer>
+      <footer className="prompt-preview"><div><p className="eyebrow">Final Prompt Preview</p><h2>{manualEditsActive ? 'Manual edits active' : 'Live graph preview'}</h2><div className="preview-actions"><button type="button" onClick={copyPrompt} disabled={!promptPreview}>Copy Prompt</button><button type="button" onClick={sendCurrentPromptToTool} disabled={!promptPreview || !targetToolId}>Send to Tool</button><button type="button" onClick={() => savePromptRun(false)} disabled={!promptPreview}>Save Prompt Run</button><button type="button" onClick={() => savePromptRun(true)} disabled={!promptPreview}>Add to Queue</button>{manualEditsActive ? <button type="button" onClick={() => setManualPrompt(null)}>Reset manual edits</button> : <button type="button" onClick={() => setManualPrompt(promptResult.finalPrompt)}>Manual Edit</button>}</div>{copyStatus && <p className="copy-status">{copyStatus}</p>}{promptResult.warnings.length > 0 && <ul className="prompt-warnings">{promptResult.warnings.map((warning, index) => <li key={`${warning.code}-${warning.nodeId ?? index}`}>{warning.message}</li>)}</ul>}</div>{manualEditsActive ? <textarea className="manual-prompt-editor" rows={8} value={promptPreview} onChange={(event: any) => setManualPrompt(event.target.value)} /> : <pre>{promptPreview || 'Connect enabled nodes to build the final prompt.'}</pre>}</footer>
     </main>
   );
 }
