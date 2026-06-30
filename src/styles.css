@@ -1,0 +1,31 @@
+:root {
+  color: #172033;
+  background: #f6f7fb;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button, input, select { font: inherit; }
+button { border: 0; border-radius: 10px; background: #315efb; color: white; cursor: pointer; padding: 0.7rem 0.9rem; font-weight: 700; }
+button:disabled { background: #a8b1c7; cursor: not-allowed; }
+button.danger { background: #c83737; }
+input, select { border: 1px solid #d8deeb; border-radius: 10px; padding: 0.68rem 0.75rem; width: 100%; }
+
+.side-panel { min-height: 100vh; padding: 1rem; }
+.top-bar { align-items: center; display: flex; gap: 1rem; justify-content: space-between; margin-bottom: 1rem; }
+h1, h2, p { margin-top: 0; }
+h1 { font-size: 1.45rem; margin-bottom: 0; }
+h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }
+.eyebrow { color: #62708f; font-size: 0.73rem; font-weight: 800; letter-spacing: 0.08em; margin-bottom: 0.2rem; text-transform: uppercase; }
+.project-selector { display: grid; gap: 0.25rem; min-width: 11rem; }
+.project-selector span { color: #62708f; font-size: 0.75rem; font-weight: 700; }
+.card, .empty-state { background: white; border: 1px solid #e7ebf3; border-radius: 18px; box-shadow: 0 10px 25px rgb(23 32 51 / 8%); margin-bottom: 1rem; padding: 1rem; }
+.create-row, .action-row { display: flex; gap: 0.6rem; }
+.create-row input { flex: 1; }
+.project-heading { align-items: start; display: flex; justify-content: space-between; }
+.project-heading span { background: #eef2ff; border-radius: 999px; color: #315efb; font-weight: 800; padding: 0.25rem 0.55rem; }
+.limit-message { color: #a15c00; font-weight: 700; margin: 0.75rem 0 0; }
+.empty-state { border-style: dashed; text-align: center; }
+.muted, .status { color: #62708f; }
+.status { font-weight: 700; }

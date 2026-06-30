@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Visual Workspace</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <main class="side-panel">
+      <header class="top-bar">
+        <div>
+          <p class="eyebrow">Workspace</p>
+          <h1>Projects</h1>
+        </div>
+        <label class="project-selector">
+          <span>Active project</span>
+          <select id="project-selector" disabled><option value="">No project</option></select>
+        </label>
+      </header>
+
+      <section class="card">
+        <h2>Create Project</h2>
+        <div class="create-row">
+          <input id="new-project-name" type="text" placeholder="Project name" />
+          <button id="create-project">Create Project</button>
+        </div>
+        <p id="limit-message" class="limit-message" hidden>Project limit reached: 5/5</p>
+      </section>
+
+      <section id="loading-state"><p class="muted">Loading projects…</p></section>
+      <section id="empty-state" class="empty-state" hidden>
+        <h2>No projects yet</h2>
+        <p>Create your first lightweight Project to start organizing prompt workspaces.</p>
+      </section>
+      <section id="active-project-card" class="card" hidden>
+        <div class="project-heading">
+          <div>
+            <p class="eyebrow">Current project</p>
+            <h2 id="active-project-name"></h2>
+          </div>
+          <span id="project-count"></span>
+        </div>
+        <div class="action-row">
+          <button id="rename-project">Rename Project</button>
+          <button id="delete-project" class="danger">Delete Project</button>
+        </div>
+      </section>
+
+      <p id="status-message" class="status" role="status"></p>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
