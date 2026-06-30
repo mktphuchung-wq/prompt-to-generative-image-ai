@@ -1,14 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "AI Visual Workflow Extension",
-  "description": "Side Panel MVP foundation for prompt workflow creation and artifact approval.",
+  "name": "AI Visual Workspace",
+  "description": "Project workspace for prompt-to-generative-image workflows.",
   "version": "0.1.0",
-  "action": {
-    "default_title": "AI Visual Workflow",
-    "default_popup": "src/popup/index.html"
-  },
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://gemini.google.com/*",
+    "https://labs.google/*",
+    "https://flow.google/*"
+  ],
   "background": {
-    "service_worker": "background/service-worker.js",
+    "service_worker": "assets/background/service-worker.js",
     "type": "module"
   },
   "content_scripts": [
@@ -19,17 +27,16 @@
         "https://labs.google/*",
         "https://flow.google/*"
       ],
-      "js": ["content/index.js"]
+      "js": [
+        "assets/content/index.js"
+      ]
     }
   ],
-  "host_permissions": [
-    "https://chatgpt.com/*",
-    "https://gemini.google.com/*",
-    "https://labs.google/*",
-    "https://flow.google/*"
-  ],
-  "permissions": ["storage", "tabs", "scripting", "sidePanel"],
   "side_panel": {
-    "default_path": "src/sidepanel/index.html"
+    "default_path": "sidepanel/index.html"
+  },
+  "action": {
+    "default_title": "AI Visual Workspace",
+    "default_popup": "popup/index.html"
   }
 }
