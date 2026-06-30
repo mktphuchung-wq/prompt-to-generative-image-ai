@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "AI Visual Workflow Extension",
+  "description": "Side Panel MVP foundation for prompt workflow creation and artifact approval.",
+  "version": "0.1.0",
+  "action": {
+    "default_title": "AI Visual Workflow",
+    "default_popup": "src/popup/index.html"
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*",
+        "https://labs.google/*",
+        "https://flow.google/*"
+      ],
+      "js": ["content/index.js"]
+    }
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://gemini.google.com/*",
+    "https://labs.google/*",
+    "https://flow.google/*"
+  ],
+  "permissions": ["storage", "tabs", "scripting", "sidePanel"],
+  "side_panel": {
+    "default_path": "src/sidepanel/index.html"
+  }
+}
