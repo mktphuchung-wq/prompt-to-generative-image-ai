@@ -100,6 +100,21 @@ export default function App() {
   const [outputMessage, setOutputMessage] = useState('');
   const [artifactSearch, setArtifactSearch] = useState('');
   const [artifactTypeFilter, setArtifactTypeFilter] = useState<'all' | ArtifactType>('all');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isBusy, setIsBusy] = useState(false);
+
+  const runAction = async (action: () => Promise<void>, failureMessage = 'Something went wrong. Please try again.') => {
+    setIsBusy(true);
+    setErrorMessage('');
+    try {
+      await action();
+    } catch (error) {
+      console.error(error);
+      setErrorMessage(error instanceof Error ? error.message : failureMessage);
+    } finally {
+      setIsBusy(false);
+    }
+  };
 
   const refreshState = () => getAppState().then(setState);
 
@@ -132,15 +147,17 @@ export default function App() {
     event.preventDefault();
     if (!state?.activeProjectId || !form.name.trim()) return;
 
-    if (editingId) {
-      await updateTemplate(editingId, form);
-    } else {
-      await createTemplate(state.activeProjectId, form);
-    }
+    await runAction(async () => {
+      if (editingId) {
+        await updateTemplate(editingId, form);
+      } else {
+        await createTemplate(state.activeProjectId, form);
+      }
 
-    setForm(emptyForm);
-    setEditingId(null);
-    await refreshState();
+      setForm(emptyForm);
+      setEditingId(null);
+      await refreshState();
+    }, 'Unable to save template.');
   };
 
   const startEditing = (template: PromptTemplate) => {
@@ -154,18 +171,31 @@ export default function App() {
   };
 
   const duplicate = async (id: string) => {
-    await duplicateTemplate(id);
-    await refreshState();
+    await runAction(async () => {
+      await duplicateTemplate(id);
+      await refreshState();
+    }, 'Unable to duplicate template.');
   };
 
   const remove = async (id: string) => {
-    await deleteTemplate(id);
+    if (!window.confirm('Delete this template? This cannot be undone.')) return;
+    await runAction(async () => {
+      await deleteTemplate(id);
     if (editingId === id) {
       setEditingId(null);
       setForm(emptyForm);
     }
-    await refreshState();
+      await refreshState();
+    }, 'Unable to delete template.');
   };
+
+  if (state === null) {
+    return <main className="app-shell compact-shell"><section className="panel-card loading-state"><span className="spinner" aria-hidden="true" /><h1>Loading workspace…</h1><p>Reading projects, templates, runs, outputs, and artifacts from local extension storage.</p></section></main>;
+  }
+
+  if (!activeProject) {
+    return <main className="app-shell compact-shell"><section className="panel-card empty-state"><p className="eyebrow">No project</p><h1>Create or restore a Project</h1><p>No active Project is available in local storage. Reset extension storage or create a Project from the onboarding flow to continue.</p>{errorMessage && <p className="error-message">{errorMessage}</p>}</section></main>;
+  }
 
   if (canvasTemplate) {
     return (
@@ -319,27 +349,27 @@ export default function App() {
   });
 
   const renderOutputs = () => (
-    <main className="app-shell">
+    <main className="app-shell compact-shell">
       <header className="hero"><p className="eyebrow">Outputs</p><h1>Review generated images before they become artifacts</h1><p>Uploaded outputs are separate review records for <strong>{activeProject?.name ?? 'the active Project'}</strong>. Approving one creates a new Artifact Library item.</p><div className="hero-actions"><button className="text-button" type="button" onClick={() => setScreen('templates')}>← Template Library</button><button className="primary-button compact" type="button" onClick={() => setScreen('artifacts')}>Open Artifact Library</button></div></header>
       <section className="panel-card"><div className="section-heading"><div><h2>Attach output image</h2><p>Small images are stored as dataUrls in chrome.storage.local for MVP. TODO: use IndexedDB for larger files.</p></div></div>
         <div className="form-row"><label>Link PromptRun<select value={outputPromptRunId} onChange={(event: { target: HTMLSelectElement }) => setOutputPromptRunId(event.target.value)}><option value="">No prompt run</option>{activePromptRuns.map((run) => <option key={run.id} value={run.id}>{formatDate(run.createdAt)} · {run.targetTool}</option>)}</select></label><label>Source tool<select value={outputSourceTool} onChange={(event: { target: HTMLSelectElement }) => setOutputSourceTool(event.target.value as PromptTemplateTargetTool)}>{TARGET_TOOLS.map((tool) => <option key={tool.value} value={tool.value}>{tool.label}</option>)}</select></label></div>
         <label className="field-block">Original prompt<textarea value={outputOriginalPrompt} rows={3} onChange={(event: { target: HTMLTextAreaElement }) => setOutputOriginalPrompt(event.target.value)} placeholder="Optional; auto-filled from PromptRun when linked." /></label>
         <input aria-label="Upload output image" type="file" accept="image/*" onChange={uploadOutput} />{outputMessage && <p className="copy-status">{outputMessage}</p>}
       </section>
-      <section className="panel-card"><h2>Output review queue</h2><div className="artifact-list">{activeOutputs.length === 0 && <p className="empty-state">No outputs uploaded yet.</p>}{activeOutputs.map((output) => (<article className="asset-card" key={output.id}><div>{output.dataUrl && <img className="asset-preview" src={output.dataUrl} alt={output.fileName} />}<h3>{output.fileName}</h3><span className={`status-pill status-${output.status}`}>{output.status.replace('_', ' ')}</span></div><dl className="metadata-grid"><div><dt>Source</dt><dd>{output.sourceTool.replace('_', ' ')}</dd></div><div><dt>Updated</dt><dd>{formatDate(output.updatedAt)}</dd></div></dl><div className="checklist">{REVIEW_CHECKLIST.map((item) => <label className="check-row" key={item}><input type="checkbox" />{item}</label>)}</div><div className="queue-actions"><button type="button" onClick={() => approveOutput(output.id)}>Approve as Artifact</button><button type="button" onClick={() => setOutputStatus(output.id, 'needs_edit')}>Mark Needs Edit</button><button type="button" onClick={() => setOutputStatus(output.id, 'rejected')}>Reject</button></div></article>))}</div></section>
+      <section className="panel-card"><h2>Output review queue</h2><div className="artifact-list">{activeOutputs.length === 0 && <p className="empty-state">No outputs uploaded yet. Attach a generated image above after sending a prompt to ChatGPT, Gemini, or Google Flow.</p>}{activeOutputs.map((output) => (<article className="asset-card" key={output.id}><div>{output.dataUrl && <img className="asset-preview" src={output.dataUrl} alt={output.fileName} />}<h3>{output.fileName}</h3><span className={`status-pill status-${output.status}`}>{output.status.replace('_', ' ')}</span></div><dl className="metadata-grid"><div><dt>Source</dt><dd>{output.sourceTool.replace('_', ' ')}</dd></div><div><dt>Updated</dt><dd>{formatDate(output.updatedAt)}</dd></div></dl><div className="checklist">{REVIEW_CHECKLIST.map((item) => <label className="check-row" key={item}><input type="checkbox" />{item}</label>)}</div><div className="queue-actions"><button type="button" onClick={() => window.confirm('Approve this output as an artifact?') && approveOutput(output.id)}>Approve as Artifact</button><button type="button" onClick={() => setOutputStatus(output.id, 'needs_edit')}>Mark Needs Edit</button><button type="button" onClick={() => setOutputStatus(output.id, 'rejected')}>Reject</button></div></article>))}</div></section>
     </main>
   );
 
   const renderArtifacts = () => (
-    <main className="app-shell">
+    <main className="app-shell compact-shell">
       <header className="hero"><p className="eyebrow">Artifact Library</p><h1>Approved source assets</h1><p>Artifacts are approved outputs scoped to <strong>{activeProject?.name ?? 'the active Project'}</strong>.</p><div className="hero-actions"><button className="text-button" type="button" onClick={() => setScreen('templates')}>← Template Library</button><button className="primary-button compact" type="button" onClick={() => setScreen('outputs')}>Review Outputs</button></div></header>
-      <section className="panel-card"><div className="filters"><input aria-label="Search artifacts" placeholder="Search name, file, type, or tag" value={artifactSearch} onChange={(event: { target: HTMLInputElement }) => setArtifactSearch(event.target.value)} /><select value={artifactTypeFilter} onChange={(event: { target: HTMLSelectElement }) => setArtifactTypeFilter(event.target.value as 'all' | ArtifactType)}><option value="all">All artifact types</option>{ARTIFACT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></div><div className="artifact-list">{filteredArtifacts.length === 0 && <p className="empty-state">No artifacts match this search/filter.</p>}{filteredArtifacts.map((artifact) => (<article className="asset-card" key={artifact.id}>{artifact.dataUrl && <img className="asset-preview" src={artifact.dataUrl} alt={artifact.name} />}<label>Name<input defaultValue={artifact.name} onBlur={(event: { target: HTMLInputElement }) => saveArtifactName(artifact.id, event.target.value)} /></label><label>Tags<input defaultValue={artifact.tags.join(', ')} onBlur={(event: { target: HTMLInputElement }) => saveArtifactTags(artifact.id, event.target.value)} placeholder="tag, tag" /></label><dl className="metadata-grid"><div><dt>Type</dt><dd>{artifact.type.split('_').join(' ')}</dd></div><div><dt>Source</dt><dd>{artifact.sourceTool.replace('_', ' ')}</dd></div></dl><div className="queue-actions"><button type="button">Use as Source Image</button><button type="button">Create Variation</button><button type="button">Send to Google Flow</button></div></article>))}</div></section>
+      <section className="panel-card"><div className="filters"><input aria-label="Search artifacts" placeholder="Search name, file, type, or tag" value={artifactSearch} onChange={(event: { target: HTMLInputElement }) => setArtifactSearch(event.target.value)} /><select value={artifactTypeFilter} onChange={(event: { target: HTMLSelectElement }) => setArtifactTypeFilter(event.target.value as 'all' | ArtifactType)}><option value="all">All artifact types</option>{ARTIFACT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></div><div className="artifact-list">{filteredArtifacts.length === 0 && <p className="empty-state">No artifacts yet. Approve an output to create a reusable artifact placeholder for future prompts.</p>}{filteredArtifacts.map((artifact) => (<article className="asset-card" key={artifact.id}>{artifact.dataUrl && <img className="asset-preview" src={artifact.dataUrl} alt={artifact.name} />}<label>Name<input defaultValue={artifact.name} onBlur={(event: { target: HTMLInputElement }) => saveArtifactName(artifact.id, event.target.value)} /></label><label>Tags<input defaultValue={artifact.tags.join(', ')} onBlur={(event: { target: HTMLInputElement }) => saveArtifactTags(artifact.id, event.target.value)} placeholder="tag, tag" /></label><dl className="metadata-grid"><div><dt>Type</dt><dd>{artifact.type.split('_').join(' ')}</dd></div><div><dt>Source</dt><dd>{artifact.sourceTool.replace('_', ' ')}</dd></div></dl><div className="queue-actions"><button type="button">Use as Source Image</button><button type="button">Create Variation</button><button type="button">Send to Google Flow</button></div></article>))}</div></section>
     </main>
   );
 
 
   const renderQueue = () => (
-    <main className="app-shell">
+    <main className="app-shell compact-shell">
       <header className="hero">
         <p className="eyebrow">Run Queue</p>
         <h1>Process prompt runs</h1>
@@ -354,7 +384,7 @@ export default function App() {
         <div className="section-heading"><div><h2>Queued tasks</h2><p>Use these manual controls to move each prompt through the semi-auto workflow.</p></div></div>
         {queueMessage && <p className="copy-status">{queueMessage}</p>}
         <div className="queue-list">
-          {activeQueueItems.length === 0 && <p className="empty-state">No prompt runs are queued for this Project yet.</p>}
+          {activeQueueItems.length === 0 && <p className="empty-state">No prompt runs are queued yet. Open a template canvas, generate a final prompt, then choose Add to Queue.</p>}
           {activeQueueItems.map((item) => {
             const promptRun = activePromptRuns.find((run) => run.id === item.promptRunId);
             return (
@@ -388,7 +418,7 @@ export default function App() {
   if (screen === 'artifacts') return renderArtifacts();
 
   return (
-    <main className="app-shell">
+    <main className="app-shell compact-shell">
       <header className="hero">
         <p className="eyebrow">Template Library</p>
         <h1>{EXTENSION_NAME}</h1>
@@ -402,6 +432,9 @@ export default function App() {
           <button className="primary-button compact" type="button" onClick={() => setScreen('artifacts')}>Open Artifact Library</button>
         </div>
       </header>
+
+      {errorMessage && <p className="error-message">{errorMessage}</p>}
+      {isBusy && <p className="loading-banner"><span className="spinner" aria-hidden="true" />Working…</p>}
 
       <section className="status-grid" aria-label="Workflow status">
         <article>
@@ -456,7 +489,7 @@ export default function App() {
               </select>
             </label>
           </div>
-          <button className="primary-button" type="submit">{editingId ? 'Save Template' : 'Create Template'}</button>
+          <button className="primary-button" type="submit" disabled={isBusy}>{isBusy ? 'Working…' : editingId ? 'Save Template' : 'Create Template'}</button>
         </form>
       </section>
 
@@ -476,7 +509,7 @@ export default function App() {
         </div>
 
         <div className="template-list">
-          {activeTemplates.length === 0 && <p className="empty-state">No templates match this Project, search, and filter.</p>}
+          {activeTemplates.length === 0 && <p className="empty-state">No templates match this Project, search, and filter. Clear filters or create a new template to continue.</p>}
           {activeTemplates.map((template: PromptTemplate) => {
             const useCase = USE_CASES.find((item) => item.value === template.useCase)?.label ?? template.useCase;
             const targetTool = TARGET_TOOLS.find((item) => item.value === template.targetTool)?.label ?? template.targetTool;
