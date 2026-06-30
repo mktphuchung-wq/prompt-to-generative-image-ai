@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "AI Visual Workspace",
+  "description": "Project workspace for prompt-to-generative-image workflows.",
+  "version": "0.1.0",
+  "permissions": ["storage", "sidePanel"],
+  "side_panel": { "default_path": "index.html" },
+  "action": { "default_title": "AI Visual Workspace" }
+}
