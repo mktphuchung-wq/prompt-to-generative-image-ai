@@ -1,5 +1,15 @@
 import { STORAGE_KEYS } from './constants';
-import type { AppState, PromptTemplate, PromptTemplateUseCase, PromptTemplateTargetTool, Project } from './types';
+import type {
+  AppState,
+  PromptRun,
+  PromptRunStatus,
+  PromptTemplate,
+  PromptTemplateUseCase,
+  PromptTemplateTargetTool,
+  Project,
+  QueueItem,
+  QueueItemStatus
+} from './types';
 
 const now = () => new Date().toISOString();
 const createId = (prefix: string) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
@@ -15,6 +25,8 @@ export const DEFAULT_APP_STATE: AppState = {
   projects: [defaultProject],
   activeProjectId: defaultProject.id,
   templates: [],
+  promptRuns: [],
+  queueItems: [],
   artifacts: []
 };
 
@@ -30,6 +42,8 @@ function normalizeState(state?: LegacyAppState): AppState {
     projects,
     activeProjectId,
     templates: state?.templates ?? [],
+    promptRuns: state?.promptRuns ?? [],
+    queueItems: state?.queueItems ?? [],
     artifacts: state?.artifacts ?? [],
     activeTool: state?.activeTool
   };
@@ -123,4 +137,133 @@ export async function duplicateTemplate(id: string): Promise<PromptTemplate> {
 export async function deleteTemplate(id: string): Promise<void> {
   const state = await getAppState();
   await setAppState({ ...state, templates: state.templates.filter((template) => template.id !== id) });
+}
+
+export type CreatePromptRunInput = {
+  projectId: string;
+  templateId: string;
+  finalPrompt: string;
+  selectedVariantIds: string[];
+  includedNodeIds: string[];
+  targetTool: PromptTemplateTargetTool;
+  status?: PromptRunStatus;
+};
+
+export async function getPromptRuns(projectId: string): Promise<PromptRun[]> {
+  const state = await getAppState();
+  return state.promptRuns.filter((run) => run.projectId === projectId);
+}
+
+export async function createPromptRun(data: CreatePromptRunInput): Promise<PromptRun> {
+  const state = await getAppState();
+  const timestamp = now();
+  const promptRun: PromptRun = {
+    id: createId('prompt_run'),
+    projectId: data.projectId,
+    templateId: data.templateId,
+    finalPrompt: data.finalPrompt,
+    selectedVariantIds: data.selectedVariantIds,
+    includedNodeIds: data.includedNodeIds,
+    targetTool: data.targetTool,
+    status: data.status ?? 'draft',
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+
+  await setAppState({ ...state, promptRuns: [promptRun, ...state.promptRuns] });
+  return promptRun;
+}
+
+export async function updatePromptRun(id: string, patch: Partial<Omit<PromptRun, 'id' | 'createdAt'>>): Promise<PromptRun> {
+  const state = await getAppState();
+  let updatedPromptRun: PromptRun | undefined;
+  const promptRuns = state.promptRuns.map((run) => {
+    if (run.id !== id) return run;
+    updatedPromptRun = { ...run, ...patch, updatedAt: now() };
+    return updatedPromptRun;
+  });
+
+  if (!updatedPromptRun) throw new Error('Prompt run not found');
+  await setAppState({ ...state, promptRuns });
+  return updatedPromptRun;
+}
+
+export async function getQueueItems(projectId: string): Promise<QueueItem[]> {
+  const state = await getAppState();
+  return state.queueItems
+    .filter((item) => item.projectId === projectId)
+    .sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt));
+}
+
+export async function addPromptRunToQueue(promptRunId: string): Promise<QueueItem> {
+  const state = await getAppState();
+  const promptRun = state.promptRuns.find((run) => run.id === promptRunId);
+  if (!promptRun) throw new Error('Prompt run not found');
+
+  const timestamp = now();
+  const projectQueue = state.queueItems.filter((item) => item.projectId === promptRun.projectId);
+  const nextOrder = projectQueue.reduce((max, item) => Math.max(max, item.order), 0) + 1;
+  const queueItem: QueueItem = {
+    id: createId('queue_item'),
+    projectId: promptRun.projectId,
+    promptRunId: promptRun.id,
+    targetTool: promptRun.targetTool,
+    status: 'pending',
+    order: nextOrder,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+
+  const promptRuns = state.promptRuns.map((run) => run.id === promptRun.id ? { ...run, status: 'queued' as PromptRunStatus, updatedAt: timestamp } : run);
+  await setAppState({ ...state, promptRuns, queueItems: [...state.queueItems, queueItem] });
+  return queueItem;
+}
+
+export async function updateQueueItem(id: string, patch: Partial<Omit<QueueItem, 'id' | 'createdAt'>>): Promise<QueueItem> {
+  const state = await getAppState();
+  let updatedQueueItem: QueueItem | undefined;
+  const timestamp = now();
+  const queueItems = state.queueItems.map((item) => {
+    if (item.id !== id) return item;
+    updatedQueueItem = { ...item, ...patch, updatedAt: timestamp };
+    return updatedQueueItem;
+  });
+
+  if (!updatedQueueItem) throw new Error('Queue item not found');
+  await setAppState({ ...state, queueItems });
+  return updatedQueueItem;
+}
+
+export async function runNextQueueItem(projectId: string): Promise<QueueItem | undefined> {
+  const state = await getAppState();
+  const timestamp = now();
+  const next = state.queueItems
+    .filter((item) => item.projectId === projectId && item.status === 'pending')
+    .sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt))[0];
+
+  if (!next) return undefined;
+
+  let updatedQueueItem: QueueItem | undefined;
+  const queueItems = state.queueItems.map((item) => {
+    if (item.projectId === projectId && item.status === 'active') {
+      return { ...item, status: 'pending' as QueueItemStatus, updatedAt: timestamp };
+    }
+    if (item.id === next.id) {
+      updatedQueueItem = { ...item, status: 'active', updatedAt: timestamp };
+      return updatedQueueItem;
+    }
+    return item;
+  });
+  const promptRuns = state.promptRuns.map((run) => run.id === next.promptRunId ? { ...run, status: 'running' as PromptRunStatus, updatedAt: timestamp } : run);
+
+  await setAppState({ ...state, promptRuns, queueItems });
+  return updatedQueueItem;
+}
+
+export async function clearCompletedQueueItems(projectId: string): Promise<void> {
+  const state = await getAppState();
+  await setAppState({
+    ...state,
+    queueItems: state.queueItems.filter((item) => item.projectId !== projectId || !['done', 'skipped'].includes(item.status))
+  });
 }

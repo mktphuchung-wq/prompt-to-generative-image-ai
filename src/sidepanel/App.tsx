@@ -1,18 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
 import { EXTENSION_NAME } from '../shared/constants';
 import {
+  addPromptRunToQueue,
+  clearCompletedQueueItems,
+  createPromptRun,
   createTemplate,
   deleteTemplate,
   duplicateTemplate,
   getAppState,
+  runNextQueueItem,
+  updateQueueItem,
+  updatePromptRun,
   updateTemplate
 } from '../shared/storage';
 import type {
   AppState,
   PromptGraph,
+  PromptRun,
   PromptTemplate,
   PromptTemplateTargetTool,
-  PromptTemplateUseCase
+  PromptTemplateUseCase,
+  QueueItem,
+  QueueItemStatus
 } from '../shared/types';
 import PromptCanvas from './PromptCanvas';
 
@@ -55,16 +64,22 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [useCaseFilter, setUseCaseFilter] = useState<'all' | PromptTemplateUseCase>('all');
   const [canvasTemplate, setCanvasTemplate] = useState<PromptTemplate | null>(null);
+  const [screen, setScreen] = useState<'templates' | 'queue'>('templates');
 
   const refreshState = () => getAppState().then(setState);
 
   useEffect(() => {
     refreshState().catch(() =>
-      setState({ projects: [], activeProjectId: '', templates: [], artifacts: [] })
+      setState({ projects: [], activeProjectId: '', templates: [], promptRuns: [], queueItems: [], artifacts: [] })
     );
   }, []);
 
   const activeProject = state?.projects.find((project) => project.id === state.activeProjectId);
+  const activePromptRuns = state?.promptRuns.filter((run) => run.projectId === state.activeProjectId) ?? [];
+  const activeQueueItems = useMemo(() => {
+    return (state?.queueItems.filter((item) => item.projectId === state.activeProjectId) ?? [])
+      .sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt));
+  }, [state]);
   const activeTemplates = useMemo(() => {
     const templates = state?.templates.filter((template) => template.projectId === state.activeProjectId) ?? [];
     const query = search.trim().toLowerCase();
@@ -126,9 +141,87 @@ export default function App() {
           await refreshState();
           return updated;
         }}
+        onCreatePromptRun={async (data) => {
+          const promptRun = await createPromptRun({
+            projectId: canvasTemplate.projectId,
+            templateId: canvasTemplate.id,
+            finalPrompt: data.finalPrompt,
+            selectedVariantIds: data.selectedVariantIds,
+            includedNodeIds: data.includedNodeIds,
+            targetTool: canvasTemplate.targetTool
+          });
+          if (data.addToQueue) {
+            await addPromptRunToQueue(promptRun.id);
+          }
+          await refreshState();
+        }}
       />
     );
   }
+
+  const setQueueStatus = async (item: QueueItem, status: QueueItemStatus) => {
+    await updateQueueItem(item.id, { status, error: undefined });
+    const promptRunStatusByQueueStatus: Partial<Record<QueueItemStatus, PromptRun['status']>> = {
+      sent: 'sent',
+      waiting_user: 'waiting_user',
+      waiting_output: 'waiting_output',
+      output_ready: 'output_ready',
+      done: 'approved',
+      failed: 'failed',
+      skipped: 'rejected'
+    };
+    const promptRunStatus = promptRunStatusByQueueStatus[status];
+    if (promptRunStatus) {
+      await updatePromptRun(item.promptRunId, { status: promptRunStatus });
+    }
+    await refreshState();
+  };
+
+  const renderQueue = () => (
+    <main className="app-shell">
+      <header className="hero">
+        <p className="eyebrow">Run Queue</p>
+        <h1>Process prompt runs</h1>
+        <p>Queue items are scoped to <strong>{activeProject?.name ?? 'the active Project'}</strong> and persist in local extension storage.</p>
+        <div className="hero-actions">
+          <button className="text-button" type="button" onClick={() => setScreen('templates')}>← Template Library</button>
+          <button className="primary-button compact" type="button" onClick={async () => { await runNextQueueItem(state?.activeProjectId ?? ''); await refreshState(); }}>Run Next</button>
+          <button className="text-button" type="button" onClick={async () => { await clearCompletedQueueItems(state?.activeProjectId ?? ''); await refreshState(); }}>Clear Completed</button>
+        </div>
+      </header>
+      <section className="panel-card">
+        <div className="section-heading"><div><h2>Queued tasks</h2><p>Use these manual controls to move each prompt through the semi-auto workflow.</p></div></div>
+        <div className="queue-list">
+          {activeQueueItems.length === 0 && <p className="empty-state">No prompt runs are queued for this Project yet.</p>}
+          {activeQueueItems.map((item) => {
+            const promptRun = activePromptRuns.find((run) => run.id === item.promptRunId);
+            return (
+              <article className="queue-card" key={item.id}>
+                <div className="queue-card-header">
+                  <div><h3>#{item.order} · {promptRun?.templateId === undefined ? 'Missing prompt run' : 'Prompt run'}</h3><p>{promptRun?.finalPrompt.slice(0, 220) || 'Prompt run not found.'}</p></div>
+                  <span className={`status-pill status-${item.status}`}>{item.status.replace('_', ' ')}</span>
+                </div>
+                <dl className="metadata-grid">
+                  <div><dt>Target tool</dt><dd>{item.targetTool.replace('_', ' ')}</dd></div>
+                  <div><dt>Updated</dt><dd>{formatDate(item.updatedAt)}</dd></div>
+                </dl>
+                <div className="queue-actions">
+                  <button type="button" onClick={() => setQueueStatus(item, 'sent')}>Mark Sent</button>
+                  <button type="button" onClick={() => setQueueStatus(item, 'waiting_output')}>Mark Waiting Output</button>
+                  <button type="button" onClick={() => setQueueStatus(item, 'output_ready')}>Mark Output Ready</button>
+                  <button type="button" onClick={() => setQueueStatus(item, 'pending')}>Retry</button>
+                  <button type="button" onClick={() => setQueueStatus(item, 'skipped')}>Skip</button>
+                  <button type="button" onClick={() => setQueueStatus(item, 'done')}>Done</button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+    </main>
+  );
+
+  if (screen === 'queue') return renderQueue();
 
   return (
     <main className="app-shell">
@@ -139,6 +232,9 @@ export default function App() {
           Manage reusable prompt workflows for <strong>{activeProject?.name ?? 'the active Project'}</strong>.
           Templates shown here are scoped to the active Project only.
         </p>
+        <div className="hero-actions">
+          <button className="primary-button compact" type="button" onClick={() => setScreen('queue')}>Open Run Queue</button>
+        </div>
       </header>
 
       <section className="status-grid" aria-label="Workflow status">
@@ -151,6 +247,11 @@ export default function App() {
           <span className="metric">{state?.templates.length ?? '—'}</span>
           <strong>Total stored</strong>
           <p>All Projects remain in local extension storage.</p>
+        </article>
+        <article>
+          <span className="metric">{activeQueueItems.length}</span>
+          <strong>Queue items</strong>
+          <p>Pending and completed prompt runs for this Project.</p>
         </article>
       </section>
 
