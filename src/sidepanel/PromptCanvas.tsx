@@ -158,6 +158,7 @@ export default function PromptCanvas({ template, onBack, onSave, onCreatePromptR
   };
 
   const deleteNode = (id: string) => {
+    if (!window.confirm('Delete this node and its connections?')) return;
     setGraph((current) => ({ ...current, nodes: current.nodes.filter((node) => node.id !== id), edges: current.edges.filter((edge) => edge.source !== id && edge.target !== id) }));
     setSelectedNodeId((current) => current === id ? null : current);
   };

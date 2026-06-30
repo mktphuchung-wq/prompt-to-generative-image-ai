@@ -1,4 +1,5 @@
 import { STORAGE_KEYS } from './constants';
+import { createStarterTemplates } from './starterTemplates';
 import type {
   AppState,
   Artifact,
@@ -28,7 +29,7 @@ const defaultProject: Project = {
 export const DEFAULT_APP_STATE: AppState = {
   projects: [defaultProject],
   activeProjectId: defaultProject.id,
-  templates: [],
+  templates: createStarterTemplates(defaultProject.id),
   promptRuns: [],
   queueItems: [],
   outputs: [],
@@ -46,7 +47,7 @@ function normalizeState(state?: LegacyAppState): AppState {
   return {
     projects,
     activeProjectId,
-    templates: state?.templates ?? [],
+    templates: state?.templates ?? createStarterTemplates(activeProjectId),
     promptRuns: state?.promptRuns ?? [],
     queueItems: state?.queueItems ?? [],
     outputs: state?.outputs ?? [],
