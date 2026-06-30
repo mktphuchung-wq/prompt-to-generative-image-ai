@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc && node scripts/build.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsc && node dist/assets/shared/promptGraphEngine.test.js"
   },
   "devDependencies": {}
 }

@@ -54,6 +54,7 @@ export type PromptNodeData = {
   isEnabled: boolean;
   isRequired?: boolean;
   selectionMode: PromptSelectionMode;
+  manualText?: string;
   variants: PromptVariant[];
 };
 
