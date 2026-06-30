@@ -1,4 +1,12 @@
-export type SupportedTool = 'chatgpt' | 'gemini' | 'google-labs' | 'google-flow';
+export type SupportedToolId = 'chatgpt' | 'gemini' | 'google_flow';
+
+export type SupportedTool = {
+  id: SupportedToolId;
+  name: string;
+  baseUrls: string[];
+  defaultUrl: string;
+  isEnabled: boolean;
+};
 
 export type ArtifactStatus = 'draft' | 'generated' | 'approved' | 'rejected';
 
@@ -15,7 +23,7 @@ export type PromptTemplateUseCase =
   | 'video_prompt'
   | 'critique_prompt';
 
-export type PromptTemplateTargetTool = 'chatgpt' | 'gemini' | 'google_flow' | 'manual';
+export type PromptTemplateTargetTool = SupportedToolId | 'manual';
 export type PromptRunTargetTool = PromptTemplateTargetTool;
 
 export type PromptRunStatus =
@@ -171,4 +179,19 @@ export interface AppState {
 export type ExtensionMessage =
   | { type: 'OPEN_SIDE_PANEL' }
   | { type: 'CONTENT_SCRIPT_READY'; url: string }
-  | { type: 'APP_STATE_UPDATED'; state: AppState };
+  | { type: 'APP_STATE_UPDATED'; state: AppState }
+  | { type: 'FIND_TOOL_TAB'; toolId: SupportedToolId }
+  | { type: 'OPEN_TOOL_TAB'; toolId: SupportedToolId }
+  | { type: 'ACTIVATE_TOOL_TAB'; tabId: number }
+  | { type: 'OPEN_OR_ACTIVATE_TOOL'; toolId: SupportedToolId }
+  | { type: 'SEND_PROMPT_TO_TOOL'; toolId: SupportedToolId; prompt: string }
+  | { type: 'PASTE_PROMPT'; prompt: string };
+
+export type PastePromptResponse = { ok: boolean; error?: string };
+
+export type SendPromptToToolResponse = {
+  ok: boolean;
+  tabId?: number;
+  pasted: boolean;
+  error?: string;
+};
