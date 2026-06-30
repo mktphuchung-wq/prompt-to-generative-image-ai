@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { generateFinalPrompt } from '../shared/promptGraphEngine';
 import type {
   PromptGraph,
   PromptGraphEdge,
@@ -91,11 +92,14 @@ export default function PromptCanvas({ template, onBack, onSave }: PromptCanvasP
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [manualPrompt, setManualPrompt] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState('');
 
   useEffect(() => {
     setGraph(normalizeGraph(template));
     setSelectedNodeId(null);
     setConnectingFrom(null);
+    setManualPrompt(null);
   }, [template.id]);
 
   useEffect(() => {
@@ -119,11 +123,9 @@ export default function PromptCanvas({ template, onBack, onSave }: PromptCanvasP
 
   const selectedNode = graph.nodes.find((node) => node.id === selectedNodeId) ?? null;
   const nodeCenters = useMemo(() => Object.fromEntries(graph.nodes.map((node) => [node.id, { x: node.position.x + 110, y: node.position.y + 42 }])), [graph.nodes]);
-  const promptPreview = useMemo(() => graph.nodes
-    .filter((node) => node.data.isEnabled)
-    .flatMap((node) => node.data.variants.filter((variant) => variant.isSelected).sort((a, b) => a.order - b.order).map((variant) => variant.content.trim()))
-    .filter(Boolean)
-    .join('\n\n'), [graph.nodes]);
+  const promptResult = useMemo(() => generateFinalPrompt(graph), [graph]);
+  const promptPreview = manualPrompt ?? promptResult.finalPrompt;
+  const manualEditsActive = manualPrompt !== null;
 
   const addNode = (kind: (typeof NODE_KINDS)[number]) => {
     const id = createId('node');
@@ -159,6 +161,18 @@ export default function PromptCanvas({ template, onBack, onSave }: PromptCanvasP
     setConnectingFrom(null);
   };
 
+  const copyPrompt = async () => {
+    if (!promptPreview) return;
+    await navigator.clipboard.writeText(promptPreview);
+    setCopyStatus('Copied');
+    window.setTimeout(() => setCopyStatus(''), 1600);
+  };
+
+  const savePromptRun = () => {
+    setCopyStatus('Prompt run saving will be available in a later milestone.');
+    window.setTimeout(() => setCopyStatus(''), 2400);
+  };
+
   const save = async () => {
     setIsSaving(true);
     const saved = await onSave(graph);
@@ -189,13 +203,14 @@ export default function PromptCanvas({ template, onBack, onSave }: PromptCanvasP
           <label>Name<input value={selectedNode.data.name} onChange={(event: any) => updateSelectedData({ name: event.target.value })} /></label>
           <label>Node type<select value={selectedNode.data.nodeType} onChange={(event: any) => updateSelectedData({ nodeType: event.target.value as PromptNodeDataType })}>{NODE_DATA_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></label>
           <label>Selection mode<select value={selectedNode.data.selectionMode} onChange={(event: any) => updateSelectedData({ selectionMode: event.target.value as PromptSelectionMode })}>{SELECTION_MODES.map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}</select></label>
+          {selectedNode.data.selectionMode === 'manual' && <label>Manual text<textarea rows={4} value={selectedNode.data.manualText ?? ''} onChange={(event: any) => updateSelectedData({ manualText: event.target.value })} /></label>}
           <label className="check-row"><input type="checkbox" checked={selectedNode.data.isEnabled} onChange={(event: any) => updateSelectedData({ isEnabled: event.target.checked })} /> Enabled</label>
           <label className="check-row"><input type="checkbox" checked={Boolean(selectedNode.data.isRequired)} onChange={(event: any) => updateSelectedData({ isRequired: event.target.checked })} /> Required</label>
           <div className="variant-header"><h3>Variants</h3><button type="button" onClick={() => updateSelectedData({ variants: [...selectedNode.data.variants, { id: createId('variant'), label: 'New variant', content: '', isSelected: false, order: selectedNode.data.variants.length + 1 }] })}>Add</button></div>
           {selectedNode.data.variants.map((variant) => <div className="variant-card" key={variant.id}><label>Label<input value={variant.label} onChange={(event: any) => updateVariant(variant.id, { label: event.target.value })} /></label><label>Content<textarea rows={3} value={variant.content} onChange={(event: any) => updateVariant(variant.id, { content: event.target.value })} /></label><div className="variant-actions"><label className="check-row"><input type="checkbox" checked={variant.isSelected} onChange={(event: any) => updateVariant(variant.id, { isSelected: event.target.checked })} /> Selected</label><button type="button" onClick={() => updateSelectedData({ variants: selectedNode.data.variants.filter((item) => item.id !== variant.id) })}>Delete</button></div></div>)}
         </div> : <p>Select a node to edit its prompt metadata and variants.</p>}</aside>
       </section>
-      <footer className="prompt-preview"><div><p className="eyebrow">Final Prompt Preview</p><h2>Placeholder preview</h2></div><pre>{promptPreview || 'Connected graph prompt generation will appear here in a later milestone.'}</pre></footer>
+      <footer className="prompt-preview"><div><p className="eyebrow">Final Prompt Preview</p><h2>{manualEditsActive ? 'Manual edits active' : 'Live graph preview'}</h2><div className="preview-actions"><button type="button" onClick={copyPrompt} disabled={!promptPreview}>Copy Prompt</button><button type="button" onClick={savePromptRun}>Save Prompt Run</button>{manualEditsActive ? <button type="button" onClick={() => setManualPrompt(null)}>Reset manual edits</button> : <button type="button" onClick={() => setManualPrompt(promptResult.finalPrompt)}>Manual Edit</button>}</div>{copyStatus && <p className="copy-status">{copyStatus}</p>}{promptResult.warnings.length > 0 && <ul className="prompt-warnings">{promptResult.warnings.map((warning, index) => <li key={`${warning.code}-${warning.nodeId ?? index}`}>{warning.message}</li>)}</ul>}</div>{manualEditsActive ? <textarea className="manual-prompt-editor" rows={8} value={promptPreview} onChange={(event: any) => setManualPrompt(event.target.value)} /> : <pre>{promptPreview || 'Connect enabled nodes to build the final prompt.'}</pre>}</footer>
     </main>
   );
 }
